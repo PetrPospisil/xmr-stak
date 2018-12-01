@@ -30,3 +30,6 @@ cmake-build-debug/
 
 # Thumbnails
 ._*
+
+#Visual studio
+/.vs
