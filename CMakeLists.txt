@@ -549,6 +549,17 @@ if(OpenCL_FOUND)
     target_link_libraries(xmrstak_opencl_backend xmr-stak-backend xmr-stak-asm)
 endif()
 
+# compile fpga backend
+file(GLOB OPENCLSRCFILES
+	"xmrstak/backend/fpga/fpga_code/*.cpp"
+    "xmrstak/backend/fpga/*.cpp")
+add_library(xmrstak_fpga_backend
+    SHARED
+    ${OPENCLSRCFILES}
+)
+target_link_libraries(xmrstak_fpga_backend )
+target_link_libraries(xmrstak_fpga_backend xmr-stak-backend xmr-stak-asm)
+
 # compile final binary
 file(GLOB SRCFILES_CPP "xmrstak/cli/*.cpp")
 set_source_files_properties(${SRCFILES_CPP} PROPERTIES LANGUAGE CXX)
@@ -581,7 +592,7 @@ if( NOT CMAKE_INSTALL_PREFIX STREQUAL PROJECT_BINARY_DIR )
                 LIBRARY DESTINATION "${CMAKE_INSTALL_PREFIX}/${LIBRARY_OUTPUT_PATH}")
         endif()
     endif()
-    if(OpenCL_FOUND)
+	if(OpenCL_FOUND)
         if(WIN32)
             install(TARGETS xmrstak_opencl_backend
                 RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}/${LIBRARY_OUTPUT_PATH}")
@@ -589,6 +600,13 @@ if( NOT CMAKE_INSTALL_PREFIX STREQUAL PROJECT_BINARY_DIR )
             install(TARGETS xmrstak_opencl_backend
                 LIBRARY DESTINATION "${CMAKE_INSTALL_PREFIX}/${LIBRARY_OUTPUT_PATH}")
         endif()
+    endif()
+	if(WIN32)
+        install(TARGETS xmrstak_fpga_backend
+            RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}/${LIBRARY_OUTPUT_PATH}")
+    else()
+        install(TARGETS xmrstak_fpga_backend
+            LIBRARY DESTINATION "${CMAKE_INSTALL_PREFIX}/${LIBRARY_OUTPUT_PATH}")
     endif()
 else()
     # this rule is used if the install prefix is the build directory

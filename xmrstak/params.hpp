@@ -23,6 +23,7 @@ struct params
 	bool useAMD;
 	bool AMDCache;
 	bool useNVIDIA;
+	bool useFPGA;
 	bool useCPU;
 	// user selected OpenCL vendor
 	std::string openCLVendor;
@@ -46,6 +47,7 @@ struct params
 	std::string configFilePools;
 	std::string configFileAMD;
 	std::string configFileNVIDIA;
+	std::string configFileFPGA;
 	std::string configFileCPU;
 
 	bool allowUAC = true;
@@ -63,13 +65,15 @@ struct params
 		useAMD(true),
 		AMDCache(true),
 		useNVIDIA(true),
+		useFPGA(true),
 		useCPU(true),
 		openCLVendor("AMD"),
 		configFile("config.txt"),
 		configFilePools("pools.txt"),
 		configFileAMD("amd.txt"),
 		configFileCPU("cpu.txt"),
-		configFileNVIDIA("nvidia.txt")
+		configFileNVIDIA("nvidia.txt"),
+		configFileFPGA("fpga.txt")
 	{}
 
 };

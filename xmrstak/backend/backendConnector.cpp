@@ -37,6 +37,9 @@
 #ifndef CONF_NO_OPENCL
 #	include "amd/minethd.hpp"
 #endif
+#ifndef CONF_NO_FPGA
+#	include "fpga/minethd.hpp"
+#endif
 
 #include <cstdlib>
 #include <assert.h>
@@ -111,6 +114,41 @@ std::vector<iBackend*>* BackendConnector::thread_starter(miner_work& pWork)
 		}
 		if(numWorkers == 0)
 			printer::inst()->print_msg(L0, "WARNING: backend NVIDIA disabled.");
+	}
+#endif
+
+#ifndef CONF_NO_FPGA
+	if (params::inst().useFPGA)
+	{
+		plugin fpgaplugin;
+		std::vector<std::string> libNames = { "xmrstak_fpga_backend" };
+		size_t numWorkers = 0u;
+
+		for (const auto & name : libNames)
+		{
+			printer::inst()->print_msg(L0, "FPGA: try to load library '%s'", name.c_str());
+			fpgaplugin.load("FPGA", name);
+			std::vector<iBackend*>* fpgaThreads = fpgaplugin.startBackend(static_cast<uint32_t>(pvThreads->size()), pWork, environment::inst());
+			if (fpgaThreads != nullptr)
+			{
+				pvThreads->insert(std::end(*pvThreads), std::begin(*fpgaThreads), std::end(*fpgaThreads));
+				numWorkers = fpgaThreads->size();
+				delete fpgaThreads;
+			}
+			else
+			{
+				// remove the plugin if we have found no GPUs
+				fpgaplugin.unload();
+			}
+			// we found at leat one working GPU
+			if (numWorkers != 0)
+			{
+				printer::inst()->print_msg(L0, "FPGA: use library '%s'", name.c_str());
+				break;
+			}
+		}
+		if (numWorkers == 0)
+			printer::inst()->print_msg(L0, "WARNING: backend FPGA disabled.");
 	}
 #endif
 

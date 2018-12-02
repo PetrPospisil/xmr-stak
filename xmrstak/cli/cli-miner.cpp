@@ -90,6 +90,10 @@ void help()
 	cout<<"  --noNVIDIA                 disable the NVIDIA miner backend"<<endl;
 	cout<<"  --nvidia FILE              NVIDIA backend miner config file"<<endl;
 #endif
+#ifndef CONF_NO_FPGA
+	cout << "  --noFPGA                 disable the FPGA miner backend" << endl;
+	cout << "  --fpga FILE              FPGA backend miner config file" << endl;
+#endif
 #ifndef CONF_NO_HTTPD
 	cout<<"  -i --httpd HTTP_PORT       HTTP interface port"<<endl;
 #endif
@@ -480,6 +484,10 @@ int main(int argc, char *argv[])
 		{
 			params::inst().useNVIDIA = false;
 		}
+		else if (opName.compare("--noFPGA") == 0)
+		{
+			params::inst().useFPGA = false;
+		}
 		else if(opName.compare("--cpu") == 0)
 		{
 			++i;
@@ -512,6 +520,17 @@ int main(int argc, char *argv[])
 				return 1;
 			}
 			params::inst().configFileNVIDIA = argv[i];
+		}
+		else if (opName.compare("--fpga") == 0)
+		{
+			++i;
+			if (i >= argc)
+			{
+				printer::inst()->print_msg(L0, "No argument for parameter '--fpga' given");
+				win_exit();
+				return 1;
+			}
+			params::inst().configFileFPGA = argv[i];
 		}
 		else if(opName.compare("--currency") == 0)
 		{
