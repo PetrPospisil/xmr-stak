@@ -19,7 +19,7 @@ namespace xmrstak
 	struct iBackend
 	{
 
-		enum BackendType : uint32_t { UNKNOWN = 0u, CPU = 1u, AMD = 2u, NVIDIA = 3u };
+		enum BackendType : uint32_t { UNKNOWN = 0u, CPU = 1u, AMD = 2u, NVIDIA = 3u, FPGA = 4u };
 
 		static const char* getName(const BackendType type)
 		{

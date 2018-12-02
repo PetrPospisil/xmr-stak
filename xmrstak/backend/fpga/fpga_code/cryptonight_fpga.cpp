@@ -21,4 +21,19 @@ extern "C" {
 
 		return 0;
 	}
+
+	int cryptonight_fpga_open(fpga_ctx *ctx)
+	{
+		return 1;
+	}
+
+	void cryptonight_fpga_hash(fpga_ctx *ctx, xmrstak_algo algo, const void* input, size_t len, void* output)
+	{
+
+	}
+
+	void cryptonight_fpga_close(fpga_ctx *ctx)
+	{
+
+	}
 }

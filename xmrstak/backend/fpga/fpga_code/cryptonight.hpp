@@ -21,4 +21,8 @@ extern "C" {
 	 */
 	int fpga_get_devicecount(int* deviceCount);
 	int fpga_get_deviceinfo(fpga_ctx *ctx);
+
+	int cryptonight_fpga_open(fpga_ctx *ctx);
+	void cryptonight_fpga_hash(fpga_ctx *ctx, xmrstak_algo algo, const void* input, size_t len, void* output);
+	void cryptonight_fpga_close(fpga_ctx *ctx);
 }
