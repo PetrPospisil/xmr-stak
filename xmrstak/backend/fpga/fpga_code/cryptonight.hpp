@@ -5,11 +5,14 @@
 
 #include "xmrstak/jconf.hpp"
 #include "xmrstak/backend/cryptonight.hpp"
+#include <Windows.h>
 
 typedef struct {
 	int device_id;
 	int device_comport;
 	int device_threads;
+
+	HANDLE hComm;
 } fpga_ctx;
 
 extern "C" {
@@ -23,6 +26,7 @@ extern "C" {
 	int fpga_get_deviceinfo(fpga_ctx *ctx);
 
 	int cryptonight_fpga_open(fpga_ctx *ctx);
-	void cryptonight_fpga_hash(fpga_ctx *ctx, xmrstak_algo algo, const void* input, size_t len, void* output);
+	void cryptonight_fpga_set_data(fpga_ctx *ctx, xmrstak_algo algo, const void* input, size_t len);
+	void cryptonight_fpga_hash(fpga_ctx *ctx, void* output);
 	void cryptonight_fpga_close(fpga_ctx *ctx);
 }
