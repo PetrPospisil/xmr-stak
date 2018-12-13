@@ -243,6 +243,18 @@ extern "C" {
 		return 1;
 	}
 
+	inline uint64_t swap_bytes(uint64_t val)
+	{
+		return ((((val) & 0xff00000000000000ull) >> 56) |
+			(((val) & 0x00ff000000000000ull) >> 40) |
+			(((val) & 0x0000ff0000000000ull) >> 24) |
+			(((val) & 0x000000ff00000000ull) >> 8) |
+			(((val) & 0x00000000ff000000ull) << 8) |
+			(((val) & 0x0000000000ff0000ull) << 24) |
+			(((val) & 0x000000000000ff00ull) << 40) |
+			(((val) & 0x00000000000000ffull) << 56));
+	}
+
 #define HASH_DATA_AREA 136
 #define TEMP_DATA_AREA 144
 
@@ -287,6 +299,9 @@ extern "C" {
 
 		for (size_t i = 0; i < HASH_DATA_AREA / sizeof(uint64_t); i++)
 			st[i] ^= ((uint64_t *)temp)[i];
+
+		for (size_t i = 0; i < sizeof(st) / sizeof(uint64_t); ++i)
+			st[i] = swap_bytes(st[i]);
 
 		BYTE   lpMessage[sizeof(lpHeader) + sizeof(stsize) + sizeof(st) + sizeof(lpTail)] = {};
 		size_t idx = 0;
@@ -365,6 +380,12 @@ extern "C" {
 			};
 			size_t dwHeaderIndex = 0;
 
+			LARGE_INTEGER StartingTime, EndingTime, ElapsedMicroseconds;
+			LARGE_INTEGER Frequency;
+
+			QueryPerformanceFrequency(&Frequency);
+			QueryPerformanceCounter(&StartingTime);
+
 			//read header
 			bool bSkip = false;
 			while (1)
@@ -394,6 +415,23 @@ extern "C" {
 
 			if (bSkip)
 				continue;
+
+			QueryPerformanceCounter(&EndingTime);
+			ElapsedMicroseconds.QuadPart = EndingTime.QuadPart - StartingTime.QuadPart;
+
+
+			//
+			// We now have the elapsed number of ticks, along with the
+			// number of ticks-per-second. We use these values
+			// to convert to the number of elapsed microseconds.
+			// To guard against loss-of-precision, we convert
+			// to microseconds *before* dividing by ticks-per-second.
+			//
+
+			ElapsedMicroseconds.QuadPart *= 1000000;
+			ElapsedMicroseconds.QuadPart /= Frequency.QuadPart;
+
+			printf("Timer %I64i us\n", ElapsedMicroseconds.QuadPart);
 
 			//read MSG command
 			Status = ReadFile(ctx->hComm, lpMessage + dwMessageIndex, sizeof(BYTE), &NoBytesRead, NULL);
@@ -455,17 +493,19 @@ extern "C" {
 
 			dwMessageIndex += sizeof(lpTail);
 
+			printf("msg: %u %u \n", *pMsgCommand, *pMsgSize);
+
 			//message succesfully read
 			//we are interested only in the one kind of the messages here
-			if (*pMsgCommand == 0x11 && *pMsgSize == 200)
+			if (*pMsgCommand == 0x11 && *pMsgSize == 204)
 				break;
 		}
 		
 		BYTE* lpData = lpMessage + 7;
-		WORD wDataSize = 200;
+		WORD wDataSize = 204;
 
 		printf("fpga:\n");
-		for (size_t i = 0; i < 200; ++i)
+		for (size_t i = 0; i < 204; ++i)
 		{
 			printf("%02X", (unsigned int)lpData[i]);
 		}
