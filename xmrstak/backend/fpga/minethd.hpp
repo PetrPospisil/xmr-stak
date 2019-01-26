@@ -49,6 +49,7 @@ namespace fpga
 		int64_t affinity;
 
 		fpga_ctx ctx;
+		jconf::thd_cfg cfg;
 
 		bool bQuit;
 	};

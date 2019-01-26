@@ -36,26 +36,6 @@ public:
 	 */
 	bool printConfig()
 	{
-		int deviceCount = 0;
-		if (fpga_get_devicecount(&deviceCount) == 0)
-			return false;
-		// evaluate config parameter for if auto adjustment is needed
-		for (int i = 0; i < deviceCount; i++)
-		{
-			fpga_ctx ctx;
-
-			ctx.device_id = i;
-			// -1 trigger auto adjustment
-			ctx.device_comport = -1;
-			ctx.device_threads = -1;
-
-			if (fpga_get_deviceinfo(&ctx) == 0)
-				fpgaCtxVec.push_back(ctx);
-			else
-				printer::inst()->print_msg(L0, "WARNING: FPGA setup failed for device %d.\n", i);
-
-		}
-
 		generateThreadConfig();
 		return true;
 
@@ -77,7 +57,7 @@ private:
 		
 		for (auto& ctx : fpgaCtxVec)
 		{
-			conf += std::string("  { \"comport\" : ") + std::to_string(ctx.device_comport) + ",\n" +
+			conf += std::string("  { \"comport\" : ") + std::to_string(ctx.device_com_port) + ",\n" +
 				"    \"threads\" : " + std::to_string(ctx.device_threads) + ",\n" +
 				"  },\n";
 		}

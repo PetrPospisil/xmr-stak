@@ -111,10 +111,7 @@ minethd::minethd(miner_work& pWork, size_t iNo, const jconf::thd_cfg& cfg)
 	iThreadNo = (uint8_t)iNo;
 	iJobNo = 0;
 	this->affinity = cfg.iCpuAff;
-
-	ctx.device_id = -1;
-	ctx.device_comport = (int)cfg.comport;
-	ctx.device_threads = (int)cfg.threads;
+	this->cfg = cfg;
 
 	std::unique_lock<std::mutex> lck(thd_aff_set);
 	std::future<void> order_guard = order_fix.get_future();
@@ -133,20 +130,19 @@ bool minethd::self_test()
 	//todo
 	return true;
 
-	fpga_ctx ctx = this->ctx;
-	if (fpga_get_deviceinfo(&ctx) != 0 || cryptonight_fpga_open(&ctx) != 1)
+	fpga_ctx ctx;
+	if (fpga_get_deviceinfo(this->cfg.comport, &ctx) != 0 || cryptonight_fpga_open(&ctx) != 1)
 	{
-		printer::inst()->print_msg(L0, "Setup failed for FPGA %d. Exiting.\n", (int)ctx.device_comport);
+		printer::inst()->print_msg(L0, "Setup failed for FPGA %d. Exiting.\n", (int)ctx.device_com_port);
 		return false;
 	}
 
 	bool bResult = true;
 
-	unsigned char out[32];
-
-	cryptonight_fpga_set_data(&ctx, cryptonight_monero, "This is a test This is a test This is a test", 44);
-	cryptonight_fpga_hash(&ctx, out);
-	bResult = bResult && memcmp(out, "\x1\x57\xc5\xee\x18\x8b\xbe\xc8\x97\x52\x85\xa3\x6\x4e\xe9\x20\x65\x21\x76\x72\xfd\x69\xa1\xae\xbd\x7\x66\xc7\xb5\x6e\xe0\xbd", 32) == 0;
+	//unsigned char out[32];
+	//cryptonight_fpga_set_data(&ctx, cryptonight_monero, "This is a test This is a test This is a test", 44);
+	//cryptonight_fpga_hash(&ctx, out);
+	//bResult = bResult && memcmp(out, "\x1\x57\xc5\xee\x18\x8b\xbe\xc8\x97\x52\x85\xa3\x6\x4e\xe9\x20\x65\x21\x76\x72\xfd\x69\xa1\xae\xbd\x7\x66\xc7\xb5\x6e\xe0\xbd", 32) == 0;
 
 	cryptonight_fpga_close(&ctx);
 	
@@ -226,9 +222,9 @@ void minethd::work_main()
 	if (affinity >= 0) //-1 means no affinity
 		bindMemoryToNUMANode(affinity);
 
-	if (fpga_get_deviceinfo(&ctx) != 0 || cryptonight_fpga_open(&ctx) != 1)
+	if (FPGA_FAILED(fpga_get_deviceinfo(this->cfg.comport, &ctx)) || FPGA_FAILED(cryptonight_fpga_open(&ctx)))
 	{
-		printer::inst()->print_msg(L0, "Setup failed for FPGA %d. Exiting.\n", (int)ctx.device_comport);
+		printer::inst()->print_msg(L0, "Setup failed for FPGA %d. Exiting.\n", (int)ctx.device_com_port);
 		std::exit(0);
 	}
 
@@ -304,60 +300,37 @@ void minethd::work_main()
 			version = new_version;
 		}
 
-		while (globalStates::inst().iGlobalJobNo.load(std::memory_order_relaxed) == iJobNo)
+		if (globalStates::inst().iGlobalJobNo.load(std::memory_order_relaxed) == iJobNo)
 		{
-			if ((iCount++ & 0x7) == 0)  //Store stats every 8*N hashes
+			fpga_error res = cryptonight_fpga_set_data(&ctx, miner_algo, bWorkBlob, oWork.iWorkSize, oWork.iTarget);
+
+			while (globalStates::inst().iGlobalJobNo.load(std::memory_order_relaxed) == iJobNo)
 			{
-				uint64_t iStamp = get_timestamp_ms();
-				iHashCount.store(iCount, std::memory_order_relaxed);
-				iTimestamp.store(iStamp, std::memory_order_relaxed);
+				res = cryptonight_fpga_hash(&ctx, &iNonce, bHashOut);
+				if (FPGA_SUCCEEDED(res))
+				{
+					//lets do full checking of the computed nonce from FPGA
+					uint8_t	bWorkBlob[112];
+					uint8_t	bResult[32];
+
+					memcpy(bWorkBlob, oWork.bWorkBlob, oWork.iWorkSize);
+					memset(bResult, 0, sizeof(job_result::bResult));
+
+					*(uint32_t*)(bWorkBlob + 39) = iNonce - 1;
+
+					hash_fun(bWorkBlob, oWork.iWorkSize, bResult, &cpu_ctx);
+					if ((*((uint64_t*)(bResult + 24))) < oWork.iTarget)
+						executor::inst()->push_event(
+							ex_event(job_result(oWork.sJobID, iNonce - 1, bHashOut, iThreadNo, miner_algo), oWork.iPoolId)
+						);
+					else
+						executor::inst()->push_event(
+							ex_event("FPGA Invalid Result", ctx.device_com_port, oWork.iPoolId)
+						);
+				}
+
+				std::this_thread::yield();
 			}
-
-			nonce_ctr -= 1;
-			if (nonce_ctr <= 0)
-			{
-				globalStates::inst().calc_start_nonce(iNonce, oWork.bNiceHash, nonce_chunk);
-				nonce_ctr = nonce_chunk;
-				// check if the job is still valid, there is a small posibility that the job is switched
-				if (globalStates::inst().iGlobalJobNo.load(std::memory_order_relaxed) != iJobNo)
-					break;
-
-				*piNonce = iNonce;
-
-				cryptonight_fpga_set_data(&ctx, miner_algo, bWorkBlob, oWork.iWorkSize);
-			}
-			else
-			{
-				*piNonce = iNonce;
-			}
-
-			cryptonight_fpga_hash(&ctx, bHashOut);
-
-			iNonce++;
-
-			if (*piHashVal < oWork.iTarget)
-			{
-				//lets do full checking of the computed nonce from FPGA
-				uint8_t	bWorkBlob[112];
-				uint8_t	bResult[32];
-
-				memcpy(bWorkBlob, oWork.bWorkBlob, oWork.iWorkSize);
-				memset(bResult, 0, sizeof(job_result::bResult));
-
-				*(uint32_t*)(bWorkBlob + 39) = iNonce - 1;
-
-				hash_fun(bWorkBlob, oWork.iWorkSize, bResult, &cpu_ctx);
-				if ((*((uint64_t*)(bResult + 24))) < oWork.iTarget)
-					executor::inst()->push_event(
-						ex_event(job_result(oWork.sJobID, iNonce - 1, bHashOut, iThreadNo, miner_algo), oWork.iPoolId)
-					);
-				else
-					executor::inst()->push_event(
-						ex_event("FPGA Invalid Result", ctx.device_comport, oWork.iPoolId)
-					);
-			}
-
-			std::this_thread::yield();
 		}
 
 		globalStates::inst().consume_work(oWork, iJobNo);

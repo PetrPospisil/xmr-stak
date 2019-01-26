@@ -8,25 +8,42 @@
 #include <Windows.h>
 
 typedef struct {
-	int device_id;
-	int device_comport;
+	int device_com_port;
 	int device_threads;
 
-	HANDLE hComm;
+	HANDLE device_com_handle;
 } fpga_ctx;
+
+typedef enum {
+	fpga_OK = 0,
+	fpga_e_InvalidArgument = -1,
+	fpga_e_PortNotConnected = -2,
+	fpga_e_UnableToOpenPort = -3,
+	fpga_e_UnableToGetCommState = -4,
+	fpga_e_UnableToSetCommState = -5,
+	fpga_e_UnableToSetCommTimeouts = -6,
+	fpga_e_UnableToSetCommMask = -7,
+	fpga_e_PortWriteFailed = -8,
+	fpga_e_Timeout = -9,
+	fpga_e_PortReadFailed = -10,
+	fpga_e_BufferTooSmall = -11,
+} fpga_error;
+
+#define FPGA_SUCCEEDED(x) ((x) >= fpga_OK)
+#define FPGA_FAILED(x) ((x) < fpga_OK)
 
 extern "C" {
 
 	/** get device count
 	 *
-	 * @param deviceCount[out] fpga device count
-	 * @return error code: 0 == error is occurred, 1 == no error
+	 * @param deviceComPort[in] device COM port
+	 * @param ctx[out] device context
+	 * @return fpga_error
 	 */
-	int fpga_get_devicecount(int* deviceCount);
-	int fpga_get_deviceinfo(fpga_ctx *ctx);
+	fpga_error fpga_get_deviceinfo(int deviceComPort, fpga_ctx *ctx);
 
-	int cryptonight_fpga_open(fpga_ctx *ctx);
-	void cryptonight_fpga_set_data(fpga_ctx *ctx, xmrstak_algo algo, const void* input, size_t len);
-	void cryptonight_fpga_hash(fpga_ctx *ctx, void* output);
+	fpga_error cryptonight_fpga_open(fpga_ctx *ctx);
+	fpga_error cryptonight_fpga_set_data(fpga_ctx *ctx, xmrstak_algo algo, const void* input, size_t len, uint64_t workTarget);
+	fpga_error cryptonight_fpga_hash(fpga_ctx *ctx, uint32_t* piNonce, uint8_t bHashOut[32]);
 	void cryptonight_fpga_close(fpga_ctx *ctx);
 }
