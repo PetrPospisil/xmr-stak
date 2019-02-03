@@ -307,7 +307,7 @@ void minethd::work_main()
 			while (globalStates::inst().iGlobalJobNo.load(std::memory_order_relaxed) == iJobNo)
 			{
 				res = cryptonight_fpga_hash(&ctx, &iNonce, bHashOut);
-				if (FPGA_SUCCEEDED(res))
+				if (FPGA_SUCCEEDED(res) && *piHashVal < oWork.iTarget)
 				{
 					//lets do full checking of the computed nonce from FPGA
 					uint8_t	bWorkBlob[112];
