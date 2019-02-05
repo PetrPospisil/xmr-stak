@@ -1,4 +1,5 @@
 #include "cryptonight.hpp"
+#include "xmrstak/misc/console.hpp"
 #include <vector>
 #include <string.h>
 
@@ -6,21 +7,25 @@
 #define FPGA_DEBUG_SET 1
 
 #ifdef FPGA_ERROR_SET
-#define FPGA_ERROR(format, ...) printf(format, __VA_ARGS__)
+#define FPGA_ERROR(format, ...) printer::inst()->print_msg(L0, format, __VA_ARGS__)
 #else //FPGA_ERROR_SET
 #endif //FPGA_ERROR_SET
 
 #ifdef FPGA_DEBUG_SET
-#define FPGA_DEBUG(level, format, ...) if(level <= FPGA_DEBUG_SET) printf(format, __VA_ARGS__)
-#define FPGA_DEBUG_CTX(level, ctx) if(level <= FPGA_DEBUG_SET) printf("%s: ctx p: %d t: %d h: %p\n", __FUNCTION__, (ctx).device_com_port, (ctx).device_threads, (ctx).device_com_handle)
+#define FPGA_DEBUG(level, format, ...) if(level <= FPGA_DEBUG_SET) printer::inst()->print_msg(L1, format, __VA_ARGS__)
+#define FPGA_DEBUG_CTX(level, ctx) if(level <= FPGA_DEBUG_SET) FPGA_DEBUG(level, "%s: ctx p: %d t: %d h: %p", __FUNCTION__, (ctx).device_com_port, (ctx).device_threads, (ctx).device_com_handle)
 #define FPGA_DEBUG_BYTE_ARR(level, str, size, arr) \
 	if(level <= FPGA_DEBUG_SET) { \
-		printf("%s: %s ", __FUNCTION__, str); \
+		char buf[1024]; \
+		size_t bpos; \
+		snprintf(buf, sizeof(buf), "%s: %s ", __FUNCTION__, str); \
+		bpos = strlen(buf); \
 		for (size_t i = 0; i < (size); ++i) \
 		{ \
-			FPGA_DEBUG(level, "%02X", (unsigned int)(arr)[i]); \
+			snprintf(buf + bpos, sizeof(buf) - bpos, "%02X", (unsigned int)(arr)[i]); \
+			bpos += 2; \
 		} \
-		FPGA_DEBUG(level, "\n"); \
+		FPGA_DEBUG(level, "%s", buf); \
 	}
 	
 #define FPGA_DEBUG_TIMER_RESULT(level, res, fcn, ...) \
@@ -34,12 +39,12 @@
 		ElapsedMicroseconds.QuadPart = EndingTime.QuadPart - StartingTime.QuadPart; \
 		ElapsedMicroseconds.QuadPart *= 1000000; \
 		ElapsedMicroseconds.QuadPart /= Frequency.QuadPart; \
-		printf("%s: Took %I64ius to complete.\n", #fcn, ElapsedMicroseconds.QuadPart); \
+		FPGA_DEBUG(level, "%s: Took %I64ius to complete.", #fcn, ElapsedMicroseconds.QuadPart); \
     } \
 	else { \
 		res = fcn(__VA_ARGS__); \
 	}
-#define FPGA_DEBUG_MSG_HEADER(level, msg) if(level <= FPGA_DEBUG_SET) printf("%s: msg header id: %d sz: %d\n", __FUNCTION__, ((MSG_HEADER*)(msg))->message, ((MSG_HEADER*)(msg))->size)
+#define FPGA_DEBUG_MSG_HEADER(level, msg) if(level <= FPGA_DEBUG_SET) FPGA_DEBUG(level, "%s: msg header id: %d sz: %d", __FUNCTION__, ((MSG_HEADER*)(msg))->message, ((MSG_HEADER*)(msg))->size)
 #else //FPGA_DEBUG_SET
 #define FPGA_DEBUG(format, ...)
 #define FPGA_DEBUG_CTX(ctx)
@@ -152,12 +157,12 @@ extern "C" {
 
 	fpga_error _send_message(HANDLE hComPort, DWORD size, BYTE* msg)
 	{
-		FPGA_DEBUG(20, "%s: h: 0x%p\n", __FUNCTION__, hComPort);
-		FPGA_DEBUG_BYTE_ARR(20, "msg:", size, msg);
+		FPGA_DEBUG(20, "%s: h: 0x%p", __FUNCTION__, hComPort);
+		FPGA_DEBUG_BYTE_ARR(1, "msg:", size, msg);
 
 		if (hComPort == NULL)
 		{
-			FPGA_ERROR("%s: hComPort null\n", __FUNCTION__);
+			FPGA_ERROR("%s: hComPort null", __FUNCTION__);
 			return fpga_e_InvalidArgument;
 		}
 
@@ -176,11 +181,11 @@ extern "C" {
 
 		if (Status == FALSE)
 		{
-			FPGA_ERROR("%s: Writing to Serial Port failed with last error: %u.\n", __FUNCTION__, GetLastError());
+			FPGA_ERROR("%s: Writing to Serial Port failed with last error: %u.", __FUNCTION__, GetLastError());
 			return fpga_e_PortWriteFailed;
 		}
 
-		FPGA_DEBUG(20, "%s: OK\n", __FUNCTION__);
+		FPGA_DEBUG(20, "%s: OK", __FUNCTION__);
 		return fpga_OK;
 	}
 
@@ -192,11 +197,11 @@ extern "C" {
 	 */
 	fpga_error fpga_get_deviceinfo(int deviceComPort, fpga_ctx *ctx)
 	{
-		FPGA_DEBUG(1, "%s: p: %d\n", __FUNCTION__, deviceComPort);
+		FPGA_DEBUG(1, "%s: p: %d", __FUNCTION__, deviceComPort);
 
 		if (ctx == NULL)
 		{
-			FPGA_ERROR("%s: ctx null\n", __FUNCTION__);
+			FPGA_ERROR("%s: ctx null", __FUNCTION__);
 			return fpga_e_InvalidArgument;
 		}
 
@@ -208,13 +213,13 @@ extern "C" {
 		BOOL ret = GetDefaultCommConfigA(strPort, lpCC, &dwSize);
 		if (!dwSize)
 		{
-			FPGA_ERROR("%s: GetDefaultCommConfig failed with last error: %u. Will try UNC variant.\n", __FUNCTION__, GetLastError());
+			FPGA_ERROR("%s: GetDefaultCommConfig failed with last error: %u. Will try UNC variant.", __FUNCTION__, GetLastError());
 			snprintf(strPort, sizeof(strPort) - 1, "\\\\.\\COM%d", deviceComPort);
 
 			ret = GetDefaultCommConfigA(strPort, lpCC, &dwSize);
 			if (!dwSize)
 			{
-				FPGA_ERROR("%s: GetDefaultCommConfig failed with last error: %u.\n", __FUNCTION__, GetLastError());
+				FPGA_ERROR("%s: GetDefaultCommConfig failed with last error: %u.", __FUNCTION__, GetLastError());
 				return fpga_e_PortNotConnected;
 			}
 		}
@@ -226,7 +231,7 @@ extern "C" {
 
 		if (!ret)
 		{
-			FPGA_ERROR("%s: GetDefaultCommConfig %u failed with last error: %u.\n", __FUNCTION__, dwSize, GetLastError());
+			FPGA_ERROR("%s: GetDefaultCommConfig %u failed with last error: %u.", __FUNCTION__, dwSize, GetLastError());
 			return fpga_e_PortNotConnected;
 		}
 
@@ -235,17 +240,17 @@ extern "C" {
 		ctx->device_com_handle = INVALID_HANDLE_VALUE;
 
 		FPGA_DEBUG_CTX(1, *ctx);
-		FPGA_DEBUG(1, "%s: OK\n", __FUNCTION__);
+		FPGA_DEBUG(1, "%s: OK", __FUNCTION__);
 		return fpga_OK;
 	}
 
 	fpga_error cryptonight_fpga_open(fpga_ctx *ctx)
 	{
-		FPGA_DEBUG(1, "%s\n", __FUNCTION__);
+		FPGA_DEBUG(1, "%s", __FUNCTION__);
 
 		if (ctx == NULL)
 		{
-			FPGA_ERROR("%s: ctx null\n", __FUNCTION__);
+			FPGA_ERROR("%s: ctx null", __FUNCTION__);
 			return fpga_e_InvalidArgument;
 		}
 
@@ -265,7 +270,7 @@ extern "C" {
 
 		if (ctx->device_com_handle == INVALID_HANDLE_VALUE)
 		{
-			FPGA_ERROR("%s: CreateFileA failed with last error: %u.\n", __FUNCTION__, GetLastError());
+			FPGA_ERROR("%s: CreateFileA failed with last error: %u.", __FUNCTION__, GetLastError());
 			return fpga_e_UnableToOpenPort;
 		}
 
@@ -275,7 +280,7 @@ extern "C" {
 		BOOL Status = GetCommState(ctx->device_com_handle, &dcbSerialParams);      //retreives  the current settings
 		if (Status == FALSE) 
 		{
-			FPGA_ERROR("%s: GetCommState failed with last error: %u.\n", __FUNCTION__, GetLastError());
+			FPGA_ERROR("%s: GetCommState failed with last error: %u.", __FUNCTION__, GetLastError());
 			CloseHandle(ctx->device_com_handle);
 			ctx->device_com_handle = INVALID_HANDLE_VALUE;
 			return fpga_e_UnableToGetCommState;
@@ -289,47 +294,64 @@ extern "C" {
 		Status = SetCommState(ctx->device_com_handle, &dcbSerialParams);  //Configuring the port according to settings in DCB 
 		if (Status == FALSE)
 		{
-			FPGA_ERROR("%s: SetCommState failed with last error: %u.\n", __FUNCTION__, GetLastError());
+			FPGA_ERROR("%s: SetCommState failed with last error: %u.", __FUNCTION__, GetLastError());
 			CloseHandle(ctx->device_com_handle);
 			ctx->device_com_handle = INVALID_HANDLE_VALUE;
 			return fpga_e_UnableToSetCommState;
 		}
 
-		/*COMMTIMEOUTS timeouts = { 0 };
-		timeouts.ReadIntervalTimeout = 1000;
-		timeouts.ReadTotalTimeoutConstant = 1000;
-		timeouts.ReadTotalTimeoutMultiplier = 1;
-		timeouts.WriteTotalTimeoutConstant = 50;
-		timeouts.WriteTotalTimeoutMultiplier = 10;
-
-		Status = SetCommTimeouts(ctx->device_com_handle, &timeouts);
+		COMMTIMEOUTS timeouts = { 0 };
+		/*Status = GetCommTimeouts(ctx->device_com_handle, &timeouts);
 		if (Status == FALSE)
 		{
-			FPGA_ERROR("%s: SetCommTimeouts failed with last error: %u.\n", __FUNCTION__, GetLastError());
+			FPGA_ERROR("%s: GetCommTimeouts failed with last error: %u.", __FUNCTION__, GetLastError());
 			CloseHandle(ctx->device_com_handle);
 			ctx->device_com_handle = INVALID_HANDLE_VALUE;
 			return fpga_e_UnableToSetCommTimeouts;
 		}*/
 
+		timeouts.ReadIntervalTimeout = 100;
+		timeouts.ReadTotalTimeoutConstant = 100;
+		timeouts.ReadTotalTimeoutMultiplier = 0;
+		timeouts.WriteTotalTimeoutConstant = 0;
+		timeouts.WriteTotalTimeoutMultiplier = 0;
+
+		Status = SetCommTimeouts(ctx->device_com_handle, &timeouts);
+		if (Status == FALSE)
+		{
+			FPGA_ERROR("%s: SetCommTimeouts failed with last error: %u.", __FUNCTION__, GetLastError());
+			CloseHandle(ctx->device_com_handle);
+			ctx->device_com_handle = INVALID_HANDLE_VALUE;
+			return fpga_e_UnableToSetCommTimeouts;
+		}
+
+		FPGA_DEBUG(1, "%s: GetCommTimeouts set: r: it: %u ttc: %u ttm: %u w: ttc: %u ttm: %u", __FUNCTION__,
+			timeouts.ReadIntervalTimeout,
+			timeouts.ReadTotalTimeoutConstant,
+			timeouts.ReadTotalTimeoutMultiplier,
+			timeouts.WriteTotalTimeoutConstant,
+			timeouts.WriteTotalTimeoutMultiplier
+		);
+
 		Status = SetCommMask(ctx->device_com_handle, EV_RXCHAR); //Configure Windows to Monitor the serial device for Character Reception
 		if (Status == FALSE)
 		{
-			FPGA_ERROR("%s: SetCommMask failed with last error: %u.\n", __FUNCTION__, GetLastError());
+			FPGA_ERROR("%s: SetCommMask failed with last error: %u.", __FUNCTION__, GetLastError());
 			CloseHandle(ctx->device_com_handle);
 			ctx->device_com_handle = INVALID_HANDLE_VALUE;
 			return fpga_e_UnableToSetCommMask;
 		}
 
-		FPGA_DEBUG(1, "%s: h: 0x%p OK\n", __FUNCTION__, ctx->device_com_handle);
+		FPGA_DEBUG(1, "%s: h: 0x%p OK", __FUNCTION__, ctx->device_com_handle);
 		return fpga_OK;
 	}
 
 	fpga_error _reset(fpga_ctx *ctx, bool bReset)
 	{
-		FPGA_DEBUG(20, "%s r: %u\n", __FUNCTION__, (uint32_t)bReset);
+		FPGA_DEBUG(20, "%s r: %u", __FUNCTION__, (uint32_t)bReset);
 		if (ctx == NULL)
 		{
-			FPGA_ERROR("%s: ctx null\n", __FUNCTION__);
+			FPGA_ERROR("%s: ctx null", __FUNCTION__);
 			return fpga_e_InvalidArgument;
 		}
 
@@ -340,7 +362,7 @@ extern "C" {
 		FPGA_DEBUG_TIMER_RESULT(2, res, _send_message, ctx->device_com_handle, (DWORD)sizeof(msg), (BYTE*)&msg);
 		if (FPGA_FAILED(res))
 		{
-			FPGA_ERROR("%s: _send_message failed with last error: %d.\n", __FUNCTION__, res);
+			FPGA_ERROR("%s: _send_message failed with last error: %d.", __FUNCTION__, res);
 			return res;
 		}
 
@@ -349,28 +371,28 @@ extern "C" {
 
 	fpga_error cryptonight_fpga_set_data(fpga_ctx *ctx, xmrstak_algo algo, const void* input, size_t len, uint64_t workTarget)
 	{
-		FPGA_DEBUG(1, "%s: algorithm: %u\n", __FUNCTION__, algo);
+		FPGA_DEBUG(1, "%s: algorithm: %u", __FUNCTION__, algo);
 		if (ctx == NULL)
 		{
-			FPGA_ERROR("%s: ctx null\n", __FUNCTION__);
+			FPGA_ERROR("%s: ctx null", __FUNCTION__);
 			return fpga_e_InvalidArgument;
 		}
 
 		if (input == NULL)
 		{
-			FPGA_ERROR("%s: input null\n", __FUNCTION__);
+			FPGA_ERROR("%s: input null", __FUNCTION__);
 			return fpga_e_InvalidArgument;
 		}
 
 		if (len == 0)
 		{
-			FPGA_ERROR("%s: len zero\n", __FUNCTION__);
+			FPGA_ERROR("%s: len zero", __FUNCTION__);
 			return fpga_e_InvalidArgument;
 		}
 
 		if (len + 1 >= FPGA_TEMP_DATA_AREA)
 		{
-			FPGA_ERROR("%s: data too large %u >= %u\n", __FUNCTION__, (DWORD)len + 1, FPGA_TEMP_DATA_AREA);
+			FPGA_ERROR("%s: data too large %u >= %u", __FUNCTION__, (DWORD)len + 1, FPGA_TEMP_DATA_AREA);
 			return fpga_e_InvalidArgument;
 		}
 
@@ -382,7 +404,7 @@ extern "C" {
 		FPGA_DEBUG_TIMER_RESULT(1, res, _reset, ctx, true);
 		if (FPGA_FAILED(res))
 		{
-			FPGA_ERROR("%s: _reset true failed with last error: %d.\n", __FUNCTION__, res);
+			FPGA_ERROR("%s: _reset true failed with last error: %d.", __FUNCTION__, res);
 			return res;
 		}
 
@@ -390,7 +412,7 @@ extern "C" {
 		FPGA_DEBUG_TIMER_RESULT(1, res, _reset, ctx, false);
 		if (FPGA_FAILED(res))
 		{
-			FPGA_ERROR("%s: _reset false failed with last error: %d.\n", __FUNCTION__, res);
+			FPGA_ERROR("%s: _reset false failed with last error: %d.", __FUNCTION__, res);
 			return res;
 		}
 
@@ -414,9 +436,9 @@ extern "C" {
 		input = a;
 		workTarget = 0x000d1b71758e2196;*/
 
-		FPGA_DEBUG(1, "%s: input size: %u.\n", __FUNCTION__, (DWORD)len);
+		FPGA_DEBUG(1, "%s: input size: %u.", __FUNCTION__, (DWORD)len);
 		FPGA_DEBUG_BYTE_ARR(1, "input data:", len, (BYTE*)input);
-		FPGA_DEBUG(1, "%s: input worktarget: 0x%I64x.\n", __FUNCTION__, workTarget);
+		FPGA_DEBUG(1, "%s: input worktarget: 0x%I64x.", __FUNCTION__, workTarget);
 
 		uint64_t st[25] = {};
 		uint8_t temp[FPGA_TEMP_DATA_AREA];
@@ -438,38 +460,38 @@ extern "C" {
 		FPGA_DEBUG_TIMER_RESULT(2, res, _send_message, ctx->device_com_handle, (DWORD)sizeof(msg), (BYTE*)&msg);
 		if (FPGA_FAILED(res))
 		{
-			FPGA_ERROR("%s: _send_message failed with last error: %d.\n", __FUNCTION__, res);
+			FPGA_ERROR("%s: _send_message failed with last error: %d.", __FUNCTION__, res);
 			return res;
 		}
 
-		FPGA_DEBUG(1, "%s: OK\n", __FUNCTION__);
+		FPGA_DEBUG(1, "%s: OK", __FUNCTION__);
 		return res;
 	}
 
 	fpga_error _get_message(HANDLE hComPort, size_t* size, BYTE* msg, uint32_t timeout)
 	{
-		FPGA_DEBUG(20, "%s: h: 0x%p max size: %u timeout: %u\n", __FUNCTION__, hComPort, (DWORD)*size, timeout);
+		FPGA_DEBUG(20, "%s: h: 0x%p max size: %u timeout: %u", __FUNCTION__, hComPort, (DWORD)*size, timeout);
 		if (hComPort == NULL)
 		{
-			FPGA_ERROR("%s: hComPort null\n", __FUNCTION__);
+			FPGA_ERROR("%s: hComPort null", __FUNCTION__);
 			return fpga_e_InvalidArgument;
 		}
 
 		if (size == NULL)
 		{
-			FPGA_ERROR("%s: size null\n", __FUNCTION__);
+			FPGA_ERROR("%s: size null", __FUNCTION__);
 			return fpga_e_InvalidArgument;
 		}
 
 		if (*size == 0)
 		{
-			FPGA_ERROR("%s: size 0\n", __FUNCTION__);
+			FPGA_ERROR("%s: size 0", __FUNCTION__);
 			return fpga_e_InvalidArgument;
 		}
 
 		if (msg == 0)
 		{
-			FPGA_ERROR("%s: msg null\n", __FUNCTION__);
+			FPGA_ERROR("%s: msg null", __FUNCTION__);
 			return fpga_e_InvalidArgument;
 		}
 
@@ -486,7 +508,7 @@ extern "C" {
 			if (dwCurrentTimestamp - dwStartTimestamp > timeout)
 			{
 				//timeout has passed
-				FPGA_DEBUG(20, "%s: timeout %u.\n", __FUNCTION__, timeout);
+				FPGA_DEBUG(20, "%s: timeout %u.", __FUNCTION__, timeout);
 				return fpga_e_Timeout;
 			}
 
@@ -500,7 +522,7 @@ extern "C" {
 				Status = ReadFile(hComPort, &TempChar, sizeof(TempChar), &NoBytesRead, NULL);
 				if (Status == FALSE)
 				{
-					FPGA_ERROR("%s: ReadFile header failed with last error: %u.\n", __FUNCTION__, GetLastError());
+					FPGA_ERROR("%s: ReadFile header failed with last error: %u.", __FUNCTION__, GetLastError());
 					return fpga_e_PortReadFailed;
 				}
 
@@ -516,7 +538,7 @@ extern "C" {
 				//fpga data do not match header...
 				if (TempChar != lpHeader[dwHeaderIndex])
 				{
-					FPGA_ERROR("%s: Warning! Header mismatch... skipped data %02x[%u] != %02x.\n", __FUNCTION__, lpHeader[dwHeaderIndex], dwHeaderIndex, TempChar);
+					FPGA_ERROR("%s: Warning! Header mismatch... skipped data %02x[%u] != %02x.", __FUNCTION__, lpHeader[dwHeaderIndex], dwHeaderIndex, TempChar);
 					bSkip = true;
 					break;
 				}
@@ -534,7 +556,7 @@ extern "C" {
 			Status = ReadFile(hComPort, msg + dwMessageIndex, sizeof(BYTE), &NoBytesRead, NULL);
 			if (Status == FALSE || NoBytesRead != sizeof(BYTE))
 			{
-				FPGA_ERROR("%s: ReadFile msg id failed with last error: %u.\n", __FUNCTION__, GetLastError());
+				FPGA_ERROR("%s: ReadFile msg id failed with last error: %u.", __FUNCTION__, GetLastError());
 				return fpga_e_PortReadFailed;
 			}
 
@@ -545,7 +567,7 @@ extern "C" {
 			Status = ReadFile(hComPort, msg + dwMessageIndex, sizeof(WORD), &NoBytesRead, NULL);
 			if (Status == FALSE || NoBytesRead != sizeof(WORD))
 			{
-				FPGA_ERROR("%s: ReadFile msg size failed with last error: %u.\n", __FUNCTION__, GetLastError());
+				FPGA_ERROR("%s: ReadFile msg size failed with last error: %u.", __FUNCTION__, GetLastError());
 				return fpga_e_PortReadFailed;
 			}
 
@@ -554,7 +576,7 @@ extern "C" {
 
 			if (*pMsgSize >= *size - dwMessageIndex - sizeof(lpTail))
 			{
-				FPGA_ERROR("%s: Message too big %u.\n", __FUNCTION__, *pMsgSize);
+				FPGA_ERROR("%s: Message too big %u.", __FUNCTION__, *pMsgSize);
 				return fpga_e_BufferTooSmall;
 			}
 
@@ -562,7 +584,7 @@ extern "C" {
 			Status = ReadFile(hComPort, msg + dwMessageIndex, *pMsgSize, &NoBytesRead, NULL);
 			if (Status == FALSE || NoBytesRead != *pMsgSize)
 			{
-				FPGA_ERROR("%s: ReadFile msg failed with last error: %u.\n", __FUNCTION__, GetLastError());
+				FPGA_ERROR("%s: ReadFile msg failed with last error: %u.", __FUNCTION__, GetLastError());
 				return fpga_e_PortReadFailed;
 			}
 
@@ -572,13 +594,13 @@ extern "C" {
 			Status = ReadFile(hComPort, msg + dwMessageIndex, sizeof(lpTail), &NoBytesRead, NULL);
 			if (Status == FALSE || NoBytesRead != sizeof(lpTail))
 			{
-				FPGA_ERROR("%s: ReadFile tail failed with last error: %u.\n", __FUNCTION__, GetLastError());
+				FPGA_ERROR("%s: ReadFile tail failed with last error: %u.", __FUNCTION__, GetLastError());
 				return fpga_e_PortReadFailed;
 			}
 
 			if (memcmp(msg + dwMessageIndex, lpTail, sizeof(lpTail)) != 0)
 			{
-				FPGA_ERROR("%s: Warning! Tail mismatch... skipped data\n", __FUNCTION__);
+				FPGA_ERROR("%s: Warning! Tail mismatch... skipped data", __FUNCTION__);
 				continue;
 			}
 
@@ -588,28 +610,28 @@ extern "C" {
 		}
 
 		*size = dwMessageIndex;
-		FPGA_DEBUG_BYTE_ARR(20, "msg:", *size, msg);
-		FPGA_DEBUG_MSG_HEADER(20, msg);
-		FPGA_DEBUG(20, "%s: OK\n", __FUNCTION__);
+		FPGA_DEBUG_BYTE_ARR(1, "msg:", *size, msg);
+		FPGA_DEBUG_MSG_HEADER(2, msg);
+		FPGA_DEBUG(20, "%s: OK", __FUNCTION__);
 		return fpga_OK;
 	}
 
 	fpga_error cryptonight_fpga_hash(fpga_ctx *ctx, uint32_t* piNonce, uint8_t hash[32])
 	{
-		FPGA_DEBUG(20, "%s\n", __FUNCTION__);
+		FPGA_DEBUG(20, "%s", __FUNCTION__);
 		if (ctx == NULL)
 		{
-			FPGA_ERROR("%s: ctx null\n", __FUNCTION__);
+			FPGA_ERROR("%s: ctx null", __FUNCTION__);
 			return fpga_e_InvalidArgument;
 		}
 		if (piNonce == NULL)
 		{
-			FPGA_ERROR("%s: piNonce null\n", __FUNCTION__);
+			FPGA_ERROR("%s: piNonce null", __FUNCTION__);
 			return fpga_e_InvalidArgument;
 		}
 		if (hash == NULL)
 		{
-			FPGA_ERROR("%s: hash null\n", __FUNCTION__);
+			FPGA_ERROR("%s: hash null", __FUNCTION__);
 			return fpga_e_InvalidArgument;
 		}
 
@@ -621,25 +643,25 @@ extern "C" {
 			FPGA_DEBUG_TIMER_RESULT(2, res, _get_message, ctx->device_com_handle, &size, msg, 1000);
 			if (res == fpga_e_Timeout)
 			{
-				FPGA_DEBUG(1, "%s: Waited for ~1s. No output yet.\n", __FUNCTION__);
+				FPGA_DEBUG(20, "%s: Waited for ~1s. No output yet.", __FUNCTION__);
 				return res;
 			}
 			else if (FPGA_FAILED(res))
 			{
-				FPGA_ERROR("%s: _get_message failed with error: %d.\n", __FUNCTION__, res);
+				FPGA_ERROR("%s: _get_message failed with error: %d.", __FUNCTION__, res);
 				return res;
 			}
 
 			MSG_HEADER* pHeader = (MSG_HEADER*)msg;
 			if (pHeader->message != 17)
 			{
-				FPGA_ERROR("%s: Warning! Msg id %u != 17 mismatch... skipped\n", __FUNCTION__, pHeader->message);
+				FPGA_ERROR("%s: Warning! Msg id %u != 17 mismatch... skipped", __FUNCTION__, pHeader->message);
 				continue;
 			}
 
 			if (pHeader->size != 36)
 			{
-				FPGA_ERROR("%s: Warning! Msg size %u != 36 mismatch... skipped\n", __FUNCTION__, pHeader->size);
+				FPGA_ERROR("%s: Warning! Msg size %u != 36 mismatch... skipped", __FUNCTION__, pHeader->size);
 				continue;
 			}
 
@@ -655,15 +677,15 @@ extern "C" {
 		*piNonce = pMessage->nonce;
 
 		FPGA_DEBUG_BYTE_ARR(1, "output hash:", sizeof(pMessage->hash), hash);
-		FPGA_DEBUG(1, "%s: output nonce: 0x%x.\n", __FUNCTION__, *piNonce);
+		FPGA_DEBUG(1, "%s: output nonce: 0x%x.", __FUNCTION__, *piNonce);
 
-		FPGA_DEBUG(20, "%s: OK\n", __FUNCTION__);
+		FPGA_DEBUG(20, "%s: OK", __FUNCTION__);
 		return fpga_OK;
 	}
 
 	void cryptonight_fpga_close(fpga_ctx *ctx)
 	{
-		FPGA_DEBUG(1, "%s\n", __FUNCTION__);
+		FPGA_DEBUG(1, "%s", __FUNCTION__);
 
 		if (ctx->device_com_handle != INVALID_HANDLE_VALUE)
 		{
@@ -673,6 +695,6 @@ extern "C" {
 			CloseHandle(ctx->device_com_handle);
 		}
 
-		FPGA_DEBUG(1, "%s: OK\n", __FUNCTION__);
+		FPGA_DEBUG(1, "%s: OK", __FUNCTION__);
 	}
 }
