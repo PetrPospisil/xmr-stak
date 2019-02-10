@@ -12,6 +12,7 @@ typedef struct {
 	int device_threads;
 
 	HANDLE device_com_handle;
+	BYTE msg_counter;
 } fpga_ctx;
 
 typedef enum {

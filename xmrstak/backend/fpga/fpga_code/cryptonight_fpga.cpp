@@ -44,7 +44,7 @@
 	else { \
 		res = fcn(__VA_ARGS__); \
 	}
-#define FPGA_DEBUG_MSG_HEADER(level, msg) if(level <= FPGA_DEBUG_SET) FPGA_DEBUG(level, "%s: msg header id: %d sz: %d", __FUNCTION__, ((MSG_HEADER*)(msg))->message, ((MSG_HEADER*)(msg))->size)
+#define FPGA_DEBUG_MSG_HEADER(level, msg) if(level <= FPGA_DEBUG_SET) FPGA_DEBUG(level, "%s: msg header id: %d cnt: %d sz: %d", __FUNCTION__, ((MSG_HEADER*)(msg))->message, ((MSG_HEADER*)(msg))->counter, ((MSG_HEADER*)(msg))->size)
 #else //FPGA_DEBUG_SET
 #define FPGA_DEBUG(format, ...)
 #define FPGA_DEBUG_CTX(ctx)
@@ -95,6 +95,7 @@ extern "C" {
 	typedef struct {
 		BYTE header[4];
 		BYTE message;
+		BYTE counter;
 		WORD size;
 	} MSG_HEADER;
 
@@ -119,7 +120,7 @@ extern "C" {
 	} MSG_OUT_11;
 	#pragma pack(pop)
 
-	void _init_message_in_01(MSG_IN_01* pMsg, uint64_t state[25], uint64_t workTarget)
+	void _init_message_in_01(MSG_IN_01* pMsg, BYTE counter, uint64_t state[25], uint64_t workTarget)
 	{
 		pMsg->header.header[0] = lpHeader[0];
 		pMsg->header.header[1] = lpHeader[1];
@@ -127,6 +128,7 @@ extern "C" {
 		pMsg->header.header[3] = lpHeader[3];
 
 		pMsg->header.message = 0x01;
+		pMsg->header.counter = counter;
 		pMsg->header.size = sizeof(pMsg->state) + sizeof(pMsg->workTarget);
 		memcpy(pMsg->state, state, sizeof(pMsg->state));
 		pMsg->workTarget = workTarget;
@@ -137,7 +139,7 @@ extern "C" {
 		pMsg->tail[3] = lpTail[3];
 	}
 
-	void _init_message_in_03(MSG_IN_03* pMsg, bool bReset)
+	void _init_message_in_03(MSG_IN_03* pMsg, BYTE counter, bool bReset)
 	{
 		pMsg->header.header[0] = lpHeader[0];
 		pMsg->header.header[1] = lpHeader[1];
@@ -145,6 +147,7 @@ extern "C" {
 		pMsg->header.header[3] = lpHeader[3];
 
 		pMsg->header.message = 0x03;
+		pMsg->header.counter = counter;
 		pMsg->header.size = 1;
 
 		pMsg->reset = (uint8_t)bReset;
@@ -238,6 +241,7 @@ extern "C" {
 		ctx->device_com_port = deviceComPort;
 		ctx->device_threads = -1;
 		ctx->device_com_handle = INVALID_HANDLE_VALUE;
+		ctx->msg_counter = 0;
 
 		FPGA_DEBUG_CTX(1, *ctx);
 		FPGA_DEBUG(1, "%s: OK", __FUNCTION__);
@@ -342,6 +346,8 @@ extern "C" {
 			return fpga_e_UnableToSetCommMask;
 		}
 
+		ctx->msg_counter = (BYTE)(time(NULL) % 256);
+
 		FPGA_DEBUG(1, "%s: h: 0x%p OK", __FUNCTION__, ctx->device_com_handle);
 		return fpga_OK;
 	}
@@ -356,7 +362,7 @@ extern "C" {
 		}
 
 		MSG_IN_03 msg;
-		_init_message_in_03(&msg, bReset);
+		_init_message_in_03(&msg, ++ctx->msg_counter, bReset);
 
 		fpga_error res;
 		FPGA_DEBUG_TIMER_RESULT(2, res, _send_message, ctx->device_com_handle, (DWORD)sizeof(msg), (BYTE*)&msg);
@@ -455,7 +461,7 @@ extern "C" {
 			st[i] = _swap_bytes64(st[i]);
 
 		MSG_IN_01 msg;
-		_init_message_in_01(&msg, st, _swap_bytes64(workTarget));
+		_init_message_in_01(&msg, ++ctx->msg_counter, st, _swap_bytes64(workTarget));
 
 		FPGA_DEBUG_TIMER_RESULT(2, res, _send_message, ctx->device_com_handle, (DWORD)sizeof(msg), (BYTE*)&msg);
 		if (FPGA_FAILED(res))
@@ -563,6 +569,17 @@ extern "C" {
 			BYTE* pMsgCommand = (BYTE*)(msg + dwMessageIndex);
 			dwMessageIndex += sizeof(BYTE);
 
+			//read MSG counter
+			Status = ReadFile(hComPort, msg + dwMessageIndex, sizeof(BYTE), &NoBytesRead, NULL);
+			if (Status == FALSE || NoBytesRead != sizeof(BYTE))
+			{
+				FPGA_ERROR("%s: ReadFile msg counter failed with last error: %u.", __FUNCTION__, GetLastError());
+				return fpga_e_PortReadFailed;
+			}
+
+			BYTE* pMsgCounter = (BYTE*)(msg + dwMessageIndex);
+			dwMessageIndex += sizeof(BYTE);
+
 			//read MSG size
 			Status = ReadFile(hComPort, msg + dwMessageIndex, sizeof(WORD), &NoBytesRead, NULL);
 			if (Status == FALSE || NoBytesRead != sizeof(WORD))
@@ -656,6 +673,12 @@ extern "C" {
 			if (pHeader->message != 17)
 			{
 				FPGA_ERROR("%s: Warning! Msg id %u != 17 mismatch... skipped", __FUNCTION__, pHeader->message);
+				continue;
+			}
+
+			if (pHeader->counter != ctx->msg_counter)
+			{
+				FPGA_ERROR("%s: Warning! Msg counter 0x%X != 0x%X ctx mismatch... skipped", __FUNCTION__, pHeader->counter, ctx->msg_counter);
 				continue;
 			}
 
