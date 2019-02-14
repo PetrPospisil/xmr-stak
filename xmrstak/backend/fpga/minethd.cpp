@@ -125,28 +125,139 @@ minethd::minethd(miner_work& pWork, size_t iNo, const jconf::thd_cfg& cfg)
 			printer::inst()->print_msg(L1, "WARNING setting affinity failed.");
 }
 
-bool minethd::self_test()
+bool minethd::self_test(fpga_ctx& ctx, jconf::test_cfg& test_cfg)
 {
-	//todo
-	return true;
+	printer::inst()->print_msg(L1, "TEST %s:", test_cfg.operation.c_str());
 
-	fpga_ctx ctx;
-	if (fpga_get_deviceinfo(this->cfg.comport, &ctx) != 0 || cryptonight_fpga_open(&ctx) != 1)
+	fpga_error res;
+	if (test_cfg.operation == "reset")
 	{
-		printer::inst()->print_msg(L0, "Setup failed for FPGA %d. Exiting.\n", (int)ctx.device_com_port);
+		if (test_cfg.data.size() == 0)
+		{
+			res = cryptonight_fpga_reset(&ctx);
+			if (FPGA_FAILED(res))
+			{
+				printer::inst()->print_msg(L0, "TEST FAILURE: cryptonight_fpga_reset failed with error %d", res);
+				return false;
+			}
+		}
+		else
+		{
+			printer::inst()->print_msg(L0, "TEST FAILURE: Data size mismatch %u != %u", test_cfg.data.size(), sizeof(uint32_t) + 32);
+			return false;
+		}
+	}
+	else if (test_cfg.operation == "set_data")
+	{
+		if (test_cfg.data.size() == 76 + sizeof(uint64_t))
+		{
+			res = cryptonight_fpga_set_data(&ctx, cryptonight_monero, test_cfg.data.data(), test_cfg.data.size() - sizeof(uint64_t), *((uint64_t*)(test_cfg.data.data() + test_cfg.data.size() - sizeof(uint64_t))));
+			if (FPGA_FAILED(res))
+			{
+				printer::inst()->print_msg(L0, "TEST FAILURE: cryptonight_fpga_set_data failed with error %d", res);
+				return false;
+			}
+		}
+		else
+		{
+			printer::inst()->print_msg(L0, "TEST FAILURE: Data size mismatch %u != %u", test_cfg.data.size(), sizeof(uint32_t) + 32);
+			return false;
+		}
+	}
+	else if (test_cfg.operation == "get_hash") 
+	{
+		if (test_cfg.data.size() == sizeof(uint32_t) + 32)
+		{
+			if (test_cfg.timeout)
+				ctx.timeout = test_cfg.timeout;
+
+			uint32_t nonce = 0;
+			uint8_t hashOut[32] = {};
+			res = cryptonight_fpga_hash(&ctx, &nonce, hashOut);
+			if (FPGA_FAILED(res))
+			{
+				printer::inst()->print_msg(L0, "TEST FAILURE: cryptonight_fpga_hash failed with error %d", res);
+				return false;
+			}
+
+			if (nonce != *((uint32_t*)test_cfg.data.data()))
+			{
+				printer::inst()->print_msg(L0, "TEST FAILURE: Nonces do not match %u != %u", nonce, *((uint32_t*)test_cfg.data.data()));
+				return false;
+			}
+
+			if (memcmp(hashOut, test_cfg.data.data() + sizeof(uint32_t), sizeof(hashOut)) != 0)
+			{
+				printer::inst()->print_msg(L0, "TEST FAILURE: Hashes do not match");
+				return false;
+			}
+		}
+		else 
+		{
+			printer::inst()->print_msg(L0, "TEST FAILURE: Data size mismatch %u != %u", test_cfg.data.size(), sizeof(uint32_t) + 32);
+			return false;
+		}
+	}
+	else
+	{
+		printer::inst()->print_msg(L0, "TEST FAILURE: %s unknown", test_cfg.operation.c_str());
 		return false;
 	}
 
-	bool bResult = true;
+	printer::inst()->print_msg(L1, "TEST %s succeeded", test_cfg.operation.c_str());
 
-	//unsigned char out[32];
-	//cryptonight_fpga_set_data(&ctx, cryptonight_monero, "This is a test This is a test This is a test", 44);
-	//cryptonight_fpga_hash(&ctx, out);
-	//bResult = bResult && memcmp(out, "\x1\x57\xc5\xee\x18\x8b\xbe\xc8\x97\x52\x85\xa3\x6\x4e\xe9\x20\x65\x21\x76\x72\xfd\x69\xa1\xae\xbd\x7\x66\xc7\xb5\x6e\xe0\xbd", 32) == 0;
+	return true;
+}
 
-	cryptonight_fpga_close(&ctx);
-	
-	return bResult;
+bool minethd::self_test()
+{
+	if (!configEditor::file_exist(params::inst().configFileFPGA))
+	{
+		autoAdjust adjust;
+		if (!adjust.printConfig())
+			return false;
+	}
+
+	if (!jconf::inst()->parse_config())
+	{
+		return false;
+	}
+
+
+	//Launch the requested number of single and double threads, to distribute
+	//load evenly we need to alternate single and double threads
+	size_t i, n = jconf::inst()->GetFPGADeviceCount();
+
+	jconf::thd_cfg cfg;
+	for (i = 0; i < n; i++)
+	{
+		jconf::inst()->GetFPGADeviceConfig(i, cfg);
+
+		fpga_ctx ctx;
+		if (FPGA_FAILED(fpga_get_deviceinfo(cfg.comport, &ctx)) || FPGA_FAILED(cryptonight_fpga_open(&ctx)))
+		{
+			printer::inst()->print_msg(L0, "Setup failed for FPGA %d. Exiting.\n", (int)ctx.device_com_port);
+			win_exit();
+		}
+
+		size_t j, m = jconf::inst()->GetFPGADeviceTestConfigCount(i);
+		for (j = 0; j < m; j++)
+		{
+			jconf::test_cfg test_cfg;
+			if (jconf::inst()->GetFPGADeviceTestConfig(i, j, test_cfg))
+			{
+				ctx.timeout = FPGA_TIMEOUT;
+				bool res = self_test(ctx, test_cfg);
+				ctx.timeout = FPGA_TIMEOUT;
+				if(!res)
+					return false;
+			}
+		}
+
+		cryptonight_fpga_close(&ctx);
+	}
+
+	return true;
 }
 
 extern "C"
@@ -158,6 +269,15 @@ extern "C"
 	{
 		environment::inst(&env);
 		return fpga::minethd::thread_starter(threadOffset, pWork);
+	}
+
+#ifdef WIN32
+	__declspec(dllexport)
+#endif
+	bool xmrstak_selftest_backend(environment& env)
+	{
+		environment::inst(&env);
+		return fpga::minethd::self_test();
 	}
 } // extern "C"
 
@@ -200,12 +320,6 @@ std::vector<iBackend*>* minethd::thread_starter(uint32_t threadOffset, miner_wor
 			printer::inst()->print_msg(L1, "Starting comport %d thread, no affinity.", cfg.comport);
 
 		minethd* thd = new minethd(pWork, i + threadOffset, cfg);
-		if (!thd->self_test())
-		{
-			printer::inst()->print_msg(L0, "FPGA %u self test not passed!", cfg.comport);
-			win_exit();
-		}
-
 		pvThreads->push_back(thd);
 	}
 
@@ -225,7 +339,7 @@ void minethd::work_main()
 	if (FPGA_FAILED(fpga_get_deviceinfo(this->cfg.comport, &ctx)) || FPGA_FAILED(cryptonight_fpga_open(&ctx)))
 	{
 		printer::inst()->print_msg(L0, "Setup failed for FPGA %d. Exiting.\n", (int)ctx.device_com_port);
-		std::exit(0);
+		win_exit();
 	}
 
 	order_fix.set_value();

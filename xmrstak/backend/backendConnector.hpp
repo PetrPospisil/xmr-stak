@@ -16,6 +16,7 @@ namespace xmrstak
 	{
 		static std::vector<iBackend*>* thread_starter(miner_work& pWork);
 		static bool self_test();
+		static void self_tests();
 	};
 
 } // namespace xmrstak

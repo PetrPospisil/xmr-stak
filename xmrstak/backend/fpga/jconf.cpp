@@ -145,6 +145,88 @@ bool jconf::GetFPGADeviceConfig(size_t id, thd_cfg &cfg)
 	return true;
 }
 
+size_t jconf::GetFPGADeviceTestConfigCount(size_t id)
+{
+	if (!prv->configValues[aFpgaDevicesConf]->IsArray())
+		return 0;
+
+	if (id >= prv->configValues[aFpgaDevicesConf]->Size())
+		return 0;
+
+	const Value& oThdConf = prv->configValues[aFpgaDevicesConf]->GetArray()[id];
+
+	if (!oThdConf.IsObject())
+		return 0;
+
+	const Value *tests;
+	tests = GetObjectMember(oThdConf, "tests");
+
+	if (!tests)
+		return 0;
+
+	if (tests->IsArray())
+		return tests->Size();
+	else
+		return 0;
+}
+
+bool jconf::GetFPGADeviceTestConfig(size_t id, size_t id_test, test_cfg& test_cfg)
+{
+	if (!prv->configValues[aFpgaDevicesConf]->IsArray())
+		return false;
+
+	if (id >= prv->configValues[aFpgaDevicesConf]->Size())
+		return false;
+
+	const Value& oThdConf = prv->configValues[aFpgaDevicesConf]->GetArray()[id];
+
+	if (!oThdConf.IsObject())
+		return false;
+
+	const Value *tests;
+	tests = GetObjectMember(oThdConf, "tests");
+
+	if (!tests)
+		return false;
+
+	if (!tests->IsArray())
+		return false;
+	
+	const Value& oTestConf = tests->GetArray()[id_test];
+
+	const Value *operation, *data, *timeout;
+	operation = GetObjectMember(oTestConf, "operation");
+	data = GetObjectMember(oTestConf, "data");
+	timeout = GetObjectMember(oTestConf, "timeout");
+
+	if (operation == nullptr || data == nullptr || timeout == nullptr)
+		return false;
+
+	if (!operation->IsString())
+		return false;
+
+	if (!data->IsString())
+		return false;
+
+	if (!timeout->IsNumber())
+		return false;
+
+	size_t len = data->GetStringLength();
+	if (len % 2 > 0)
+		return false;
+
+	test_cfg.operation = operation->GetString();
+	test_cfg.data.resize(len / 2);
+	for (uint32_t i = 0; i < len / 2; ++i)
+	{
+		char byte[3] = { data->GetString()[i * 2], data->GetString()[i * 2 + 1], 0 };
+		test_cfg.data[i] = (uint8_t)strtol(byte, NULL, 16);
+	}
+	test_cfg.timeout = timeout->GetUint();
+
+	return true;
+}
+
 bool jconf::parse_config(const char* sFilename)
 {
 	FILE * pFile;

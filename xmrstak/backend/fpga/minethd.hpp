@@ -28,11 +28,13 @@ namespace fpga
 		typedef void(*cn_hash_fun)(const void*, size_t, void*, cryptonight_ctx**);
 
 		static bool thd_setaffinity(std::thread::native_handle_type h, uint64_t cpu_id);
+
+		static bool self_test();
 	private:
 
 		minethd(miner_work& pWork, size_t iNo, const jconf::thd_cfg& cfg);
 
-		bool self_test();
+		static bool self_test(fpga_ctx& ctx, jconf::test_cfg& test_cfg);
 
 		void prep_work(uint8_t *bWorkBlob, uint32_t *piNonce);
 

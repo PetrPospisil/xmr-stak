@@ -58,6 +58,82 @@ bool BackendConnector::self_test()
 	return cpu::minethd::self_test();
 }
 
+void BackendConnector::self_tests()
+{
+	uint32_t failed = 0;
+#ifndef CONF_NO_OPENCL
+	if (params::inst().useAMD)
+	{
+		const std::string backendName = xmrstak::params::inst().openCLVendor;
+		plugin amdplugin;
+		amdplugin.load(backendName, "xmrstak_opencl_backend");
+		if (!amdplugin.self_test(environment::inst()))
+		{
+			printer::inst()->print_msg(L0, "Backend OPENCL Self test not passed!");
+			failed++;
+		}
+	}
+#endif
+
+#ifndef CONF_NO_CUDA
+	if (params::inst().useNVIDIA)
+	{
+		plugin nvidiaplugin;
+		std::vector<std::string> libNames = { "xmrstak_cuda_backend_cuda10_0", "xmrstak_cuda_backend_cuda9_2", "xmrstak_cuda_backend" };
+		size_t numWorkers = 0u;
+
+		for (const auto & name : libNames)
+		{
+			printer::inst()->print_msg(L0, "NVIDIA: try to load library '%s'", name.c_str());
+			nvidiaplugin.load("NVIDIA", name);
+			if (!nvidiaplugin.self_test(environment::inst()))
+			{
+				printer::inst()->print_msg(L0, "Backend NVIDIA Self test not passed!");
+				failed++;
+			}
+		}
+	}
+#endif
+
+#ifndef CONF_NO_FPGA
+	if (params::inst().useFPGA)
+	{
+		plugin fpgaplugin;
+		std::vector<std::string> libNames = { "xmrstak_fpga_backend" };
+		size_t numWorkers = 0u;
+
+		for (const auto & name : libNames)
+		{
+			printer::inst()->print_msg(L0, "FPGA: try to load library '%s'", name.c_str());
+			fpgaplugin.load("FPGA", name);
+			if (!fpgaplugin.self_test(environment::inst()))
+			{
+				printer::inst()->print_msg(L0, "Backend FPGA Self test not passed!");
+				failed++;
+			}
+		}
+	}
+#endif
+
+#ifndef CONF_NO_CPU
+	if (params::inst().useCPU)
+	{
+		if (!cpu::minethd::self_test())
+		{
+			printer::inst()->print_msg(L0, "Backend CPU Self test not passed!");
+			failed++;
+		}
+	}
+#endif
+
+	if (!failed)
+	{
+		printer::inst()->print_msg(L0, "All self tests succeeded!");
+	}
+
+	return;
+}
+
 std::vector<iBackend*>* BackendConnector::thread_starter(miner_work& pWork)
 {
 

@@ -550,12 +550,12 @@ if(OpenCL_FOUND)
 endif()
 
 # compile fpga backend
-file(GLOB OPENCLSRCFILES
+file(GLOB FPGASRCFILES
 	"xmrstak/backend/fpga/fpga_code/*.cpp"
     "xmrstak/backend/fpga/*.cpp")
 add_library(xmrstak_fpga_backend
     SHARED
-    ${OPENCLSRCFILES}
+    ${FPGASRCFILES}
 )
 target_link_libraries(xmrstak_fpga_backend )
 target_link_libraries(xmrstak_fpga_backend xmr-stak-backend xmr-stak-asm)

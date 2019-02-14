@@ -59,6 +59,8 @@ struct params
 	int benchmark_wait_sec = 30;
 	int benchmark_work_sec = 60;
 
+	bool testMode = false;
+
 	params() :
 		binaryName("xmr-stak"),
 		executablePrefix(""),

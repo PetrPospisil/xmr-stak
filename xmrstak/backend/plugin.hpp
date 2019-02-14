@@ -77,6 +77,23 @@ struct plugin
 			std::cerr << "WARNING: backend plugin " << libName << " contains no entry 'xmrstak_start_backend': " << dlsym_error << std::endl;
 		}
 #endif
+
+#ifdef WIN32
+		fn_selftestBackend = (selftestBackend_t)GetProcAddress(libBackend, "xmrstak_selftest_backend");
+		if (!fn_selftestBackend)
+		{
+			std::cerr << "WARNING: backend plugin " << libName << " contains no entry 'xmrstak_selftest_backend': " << GetLastError() << std::endl;
+		}
+#else
+		// reset last error
+		dlerror();
+		fn_selftestBackend = (selftestBackend_t)dlsym(libBackend, "xmrstak_selftest_backend");
+		const char* dlsym_error = dlerror();
+		if (dlsym_error)
+		{
+			std::cerr << "WARNING: backend plugin " << libName << " contains no entry 'xmrstak_selftest_backend': " << dlsym_error << std::endl;
+		}
+#endif
 	}
 
 	std::vector<iBackend*>* startBackend(uint32_t threadOffset, miner_work& pWork, environment& env)
@@ -88,6 +105,14 @@ struct plugin
 		}
 
 		return fn_startBackend(threadOffset, pWork, env);
+	}
+
+	bool self_test(environment& env)
+	{
+		if (fn_selftestBackend == nullptr)
+			return true;
+
+		return fn_selftestBackend(env);
 	}
 
 	void unload()
@@ -106,8 +131,10 @@ struct plugin
 	std::string m_backendName;
 
 	typedef std::vector<iBackend*>* (*startBackend_t)(uint32_t threadOffset, miner_work& pWork, environment& env);
+	typedef bool(*selftestBackend_t)(environment& env);
 
 	startBackend_t fn_startBackend = nullptr;
+	selftestBackend_t fn_selftestBackend = nullptr;
 
 #ifdef WIN32
 	HINSTANCE libBackend;

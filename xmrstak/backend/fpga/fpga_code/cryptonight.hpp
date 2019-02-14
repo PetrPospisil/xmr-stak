@@ -13,6 +13,7 @@ typedef struct {
 
 	HANDLE device_com_handle;
 	BYTE msg_counter;
+	DWORD timeout;
 } fpga_ctx;
 
 typedef enum {
@@ -33,6 +34,8 @@ typedef enum {
 #define FPGA_SUCCEEDED(x) ((x) >= fpga_OK)
 #define FPGA_FAILED(x) ((x) < fpga_OK)
 
+#define FPGA_TIMEOUT 1000
+
 extern "C" {
 
 	/** get device count
@@ -46,5 +49,6 @@ extern "C" {
 	fpga_error cryptonight_fpga_open(fpga_ctx *ctx);
 	fpga_error cryptonight_fpga_set_data(fpga_ctx *ctx, xmrstak_algo algo, const void* input, size_t len, uint64_t workTarget);
 	fpga_error cryptonight_fpga_hash(fpga_ctx *ctx, uint32_t* piNonce, uint8_t bHashOut[32]);
+	fpga_error cryptonight_fpga_reset(fpga_ctx* ctx);
 	void cryptonight_fpga_close(fpga_ctx *ctx);
 }

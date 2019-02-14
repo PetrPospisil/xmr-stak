@@ -733,6 +733,10 @@ int main(int argc, char *argv[])
 			}
 			params::inst().benchmark_work_sec = worksec;
 		}
+		else if (opName.compare("--tests") == 0)
+		{
+			params::inst().testMode = true;
+		}
 		else
 		{
 			printer::inst()->print_msg(L0, "Parameter unknown '%s'",argv[i]);
@@ -821,6 +825,14 @@ int main(int argc, char *argv[])
 	printer::inst()->print_str("Monero. See https://github.com/fireice-uk/cryptonote-speedup-demo for details.\n");
 	printer::inst()->print_str("-------------------------------------------------------------------\n");
 	printer::inst()->print_msg(L0, "Mining coin: %s", jconf::inst()->GetMiningCoin().c_str());
+
+	if (params::inst().testMode)
+	{
+		printer::inst()->print_str("!!!! Doing only a tests and exiting. To mine, remove the '--tests' option. !!!!\n");
+		BackendConnector::self_tests();
+		win_exit();
+		return 0;
+	}
 
 	if(params::inst().benchmark_block_version >= 0)
 	{
